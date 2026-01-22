@@ -3,8 +3,9 @@ import React, { useState } from 'react';
 import { Header } from './components/Header';
 import { Dashboard } from './components/Dashboard';
 import { SettingsModal } from './components/SettingsModal';
+import { FileUploader } from './components/FileUploader';
 import { Trade, AISettings } from './types';
-import { fetchWalletTradesOnMarket } from './utils/dataProcessor';
+import { fetchWalletTradesOnMarket, processCsvData } from './utils/dataProcessor';
 
 const App: React.FC = () => {
   const [trades, setTrades] = useState<Trade[]>([]);
@@ -14,6 +15,7 @@ const App: React.FC = () => {
   const [hasSearched, setHasSearched] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [isSimulated, setIsSimulated] = useState<boolean>(true);
+  const [errors, setErrors] = useState<{ wallet?: string; market?: string }>({});
   
   // Settings State
   const [aiSettings, setAiSettings] = useState<AISettings>({
@@ -23,8 +25,34 @@ const App: React.FC = () => {
     geminiApiKey: ''
   });
 
+  const validateInputs = (): boolean => {
+    const newErrors: { wallet?: string; market?: string } = {};
+    let isValid = true;
+
+    if (!marketQuery.trim()) {
+      newErrors.market = "Target Market is required.";
+      isValid = false;
+    } else if (marketQuery.length < 3) {
+      newErrors.market = "Market name must be at least 3 characters.";
+      isValid = false;
+    }
+
+    // Strict Ethereum address validation
+    const walletRegex = /^0x[a-fA-F0-9]{40}$/;
+    if (!walletAddress.trim()) {
+      newErrors.wallet = "Wallet address is required.";
+      isValid = false;
+    } else if (!walletRegex.test(walletAddress)) {
+      newErrors.wallet = "Invalid Ethereum address. Must start with '0x' followed by 40 hex characters.";
+      isValid = false;
+    }
+
+    setErrors(newErrors);
+    return isValid;
+  };
+
   const handleAnalyze = async () => {
-    if (!walletAddress || !marketQuery) return;
+    if (!validateInputs()) return;
 
     setIsAnalyzing(true);
     setHasSearched(true);
@@ -32,8 +60,6 @@ const App: React.FC = () => {
     try {
       const scrapedTrades = await fetchWalletTradesOnMarket(walletAddress, marketQuery);
       setTrades(scrapedTrades);
-      // Currently the fetcher only simulates data. 
-      // In a real implementation, we would check a flag from the response.
       setIsSimulated(true);
     } catch (error) {
       console.error("Failed to fetch trades", error);
@@ -42,10 +68,45 @@ const App: React.FC = () => {
     }
   };
 
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setIsAnalyzing(true);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        const text = e.target?.result as string;
+        if (text) {
+            const parsedTrades = processCsvData(text);
+            if (parsedTrades.length > 0) {
+                setTrades(parsedTrades);
+                // Try to infer context from the first trade
+                setMarketQuery(parsedTrades[0].market);
+                setWalletAddress('Scraped Data');
+                setIsSimulated(false); // Real data
+                setHasSearched(true);
+            }
+        }
+        setIsAnalyzing(false);
+    };
+    reader.readAsText(file);
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       handleAnalyze();
     }
+  };
+
+  // Clear error when user types
+  const handleMarketChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setMarketQuery(e.target.value);
+    if (errors.market) setErrors(prev => ({ ...prev, market: undefined }));
+  };
+
+  const handleWalletChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setWalletAddress(e.target.value);
+    if (errors.wallet) setErrors(prev => ({ ...prev, wallet: undefined }));
   };
 
   return (
@@ -77,52 +138,84 @@ const App: React.FC = () => {
             <div className="w-full max-w-xl bg-slate-900/80 backdrop-blur-xl border border-slate-800 rounded-2xl p-8 shadow-2xl relative overflow-hidden group hover:border-slate-700 transition-all duration-300">
               <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500"></div>
               
+              <div className="mb-6 p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg flex items-start space-x-3">
+                <svg className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div>
+                  <h4 className="text-sm font-semibold text-amber-500">Simulation Mode Active</h4>
+                  <p className="text-xs text-amber-500/80">
+                    Data will be simulated unless you upload a real scrape export.
+                  </p>
+                </div>
+              </div>
+
               <div className="space-y-6">
                 <div className="space-y-2">
                   <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider ml-1">Target Market</label>
                   <div className="relative">
                     <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                      <svg className="h-5 w-5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <svg className={`h-5 w-5 ${errors.market ? 'text-rose-500' : 'text-slate-500'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                       </svg>
                     </div>
                     <input
                       type="text"
-                      className="w-full bg-slate-950 border border-slate-800 text-white text-sm rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 block w-full pl-11 p-4 placeholder-slate-600 transition-all"
+                      className={`w-full bg-slate-950 border text-white text-sm rounded-lg focus:ring-2 block w-full pl-11 p-4 placeholder-slate-600 transition-all ${
+                        errors.market 
+                          ? 'border-rose-500 focus:ring-rose-500 focus:border-rose-500' 
+                          : 'border-slate-800 focus:ring-emerald-500 focus:border-emerald-500'
+                      }`}
                       placeholder="e.g. Will Trump win the 2024 Election?"
                       value={marketQuery}
-                      onChange={(e) => setMarketQuery(e.target.value)}
+                      onChange={handleMarketChange}
                       onKeyDown={handleKeyDown}
                     />
                   </div>
+                  {errors.market && <p className="text-xs text-rose-500 ml-1">{errors.market}</p>}
                 </div>
 
                 <div className="space-y-2">
                   <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider ml-1">Wallet Address</label>
                   <div className="relative">
                     <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                      <svg className="h-5 w-5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <svg className={`h-5 w-5 ${errors.wallet ? 'text-rose-500' : 'text-slate-500'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
                       </svg>
                     </div>
                     <input
                       type="text"
-                      className="w-full bg-slate-950 border border-slate-800 text-white text-sm rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 block w-full pl-11 p-4 placeholder-slate-600 font-mono transition-all"
+                      className={`w-full bg-slate-950 border text-white text-sm rounded-lg focus:ring-2 block w-full pl-11 p-4 placeholder-slate-600 font-mono transition-all ${
+                         errors.wallet 
+                          ? 'border-rose-500 focus:ring-rose-500 focus:border-rose-500' 
+                          : 'border-slate-800 focus:ring-emerald-500 focus:border-emerald-500'
+                      }`}
                       placeholder="0x..."
                       value={walletAddress}
-                      onChange={(e) => setWalletAddress(e.target.value)}
+                      onChange={handleWalletChange}
                       onKeyDown={handleKeyDown}
                     />
                   </div>
+                  {errors.wallet && <p className="text-xs text-rose-500 ml-1">{errors.wallet}</p>}
                 </div>
 
                 <button
                   onClick={handleAnalyze}
-                  disabled={!marketQuery || !walletAddress}
                   className="w-full text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 focus:ring-4 focus:ring-emerald-800 font-medium rounded-lg text-sm px-5 py-4 text-center shadow-lg shadow-emerald-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all transform hover:-translate-y-0.5"
                 >
                   Scrape & Analyze Trades
                 </button>
+                
+                <div className="relative py-2">
+                  <div className="absolute inset-0 flex items-center">
+                    <div className="w-full border-t border-slate-800"></div>
+                  </div>
+                  <div className="relative flex justify-center">
+                    <span className="px-2 bg-slate-900 text-xs text-slate-500">OR</span>
+                  </div>
+                </div>
+
+                <FileUploader onUpload={handleFileUpload} />
               </div>
             </div>
             
@@ -159,7 +252,7 @@ const App: React.FC = () => {
                 </div>
               </div>
               <button 
-                onClick={() => { setHasSearched(false); setTrades([]); }}
+                onClick={() => { setHasSearched(false); setTrades([]); setErrors({}); setMarketQuery(''); setWalletAddress(''); }}
                 className="text-sm text-slate-400 hover:text-white transition-colors flex items-center gap-2 bg-slate-900 px-4 py-2 rounded-lg border border-slate-800 hover:border-slate-700"
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
