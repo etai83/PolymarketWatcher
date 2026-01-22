@@ -13,6 +13,7 @@ const App: React.FC = () => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [isSimulated, setIsSimulated] = useState<boolean>(true);
   
   // Settings State
   const [aiSettings, setAiSettings] = useState<AISettings>({
@@ -31,6 +32,9 @@ const App: React.FC = () => {
     try {
       const scrapedTrades = await fetchWalletTradesOnMarket(walletAddress, marketQuery);
       setTrades(scrapedTrades);
+      // Currently the fetcher only simulates data. 
+      // In a real implementation, we would check a flag from the response.
+      setIsSimulated(true);
     } catch (error) {
       console.error("Failed to fetch trades", error);
     } finally {
@@ -136,10 +140,23 @@ const App: React.FC = () => {
                   {marketQuery}
                   <span className="px-2 py-0.5 rounded text-xs bg-slate-800 text-slate-400 font-normal border border-slate-700">Polymarket</span>
                 </h2>
-                <p className="text-slate-400 font-mono text-sm mt-1 flex items-center gap-2">
-                  <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-                  Watching: {walletAddress}
-                </p>
+                <div className="mt-1 flex items-center gap-3">
+                  <p className="text-slate-400 font-mono text-sm flex items-center gap-2">
+                    <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                    Watching: {walletAddress}
+                  </p>
+                  {isSimulated ? (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-500 border border-amber-500/20 uppercase tracking-wide">
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.384-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" /></svg>
+                      Simulated Data
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 uppercase tracking-wide">
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                      Real On-Chain
+                    </span>
+                  )}
+                </div>
               </div>
               <button 
                 onClick={() => { setHasSearched(false); setTrades([]); }}

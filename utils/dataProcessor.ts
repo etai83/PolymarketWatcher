@@ -23,7 +23,19 @@ const generateMarketHistory = (marketName: string, wallet: string): Trade[] => {
     const timeOffset = (tradeCount - i) * (oneDay / 4) + (Math.random() * oneDay); // Spread over a few weeks
     
     const isBuy = Math.random() > 0.45; // Slightly more buys usually
-    const size = Math.floor(Math.random() * 2000) + 50; // Random size $50 - $2050
+    
+    // Whale size generation: Mix of small probes and large convictions
+    // Skew random towards larger numbers for "Whale" feel
+    // Size is in Shares
+    const sizeBase = Math.random(); 
+    let size;
+    if (sizeBase > 0.9) {
+        size = Math.floor(Math.random() * 15000) + 5000; // Super conviction: 5k-20k shares
+    } else if (sizeBase > 0.6) {
+        size = Math.floor(Math.random() * 4000) + 1000; // Medium: 1k-5k shares
+    } else {
+        size = Math.floor(Math.random() * 900) + 100; // Small: 100-1000 shares
+    }
 
     trades.push({
       id: `trade-${i}`,
@@ -32,7 +44,7 @@ const generateMarketHistory = (marketName: string, wallet: string): Trade[] => {
       side: isBuy ? 'BUY' : 'SELL',
       size: size,
       price: currentPrice,
-      total: size * currentPrice,
+      total: size * currentPrice, // Total USD Value
       outcome: 'OPEN'
     });
   }
@@ -49,7 +61,7 @@ export const fetchWalletTradesOnMarket = async (wallet: string, marketName: stri
     // Simulate network delay for "scraping"
     setTimeout(() => {
       resolve(generateMarketHistory(marketName, wallet));
-    }, 2000);
+    }, 1500);
   });
 };
 
@@ -64,14 +76,6 @@ export const calculateStats = (trades: Trade[]): DashboardStats => {
   const sellVolume = trades.filter(t => t.side === 'SELL').reduce((sum, t) => sum + t.total, 0);
   
   // Estimate PnL based on VWAP logic
-  // Assume average sell price vs average buy price
-  const avgBuyPrice = buyVolume > 0 ? trades.filter(t => t.side === 'BUY').reduce((acc, t) => acc + (t.price * t.size), 0) / trades.filter(t => t.side === 'BUY').reduce((acc, t) => acc + t.size, 0) : 0;
-  const avgSellPrice = sellVolume > 0 ? trades.filter(t => t.side === 'SELL').reduce((acc, t) => acc + (t.price * t.size), 0) / trades.filter(t => t.side === 'SELL').reduce((acc, t) => acc + t.size, 0) : 0;
-  
-  // If they sold, realize PnL. If holding, unrealized based on last price.
-  // Simplified: (Sell Vol) - (Buy Vol associated with those shares). 
-  // For this demo, we'll use a simpler heuristic: Total Sell Value - Cost Basis of Sold Tokens.
-  // But to keep it simple and visual:
   const pnl = sellVolume - (buyVolume * 0.85); // Mock positive PnL bias for "Whales"
 
   const winningTrades = trades.filter(t => t.price > 0.6 && t.side === 'BUY' || t.price < 0.4 && t.side === 'SELL').length;
