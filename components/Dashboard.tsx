@@ -10,9 +10,10 @@ interface DashboardProps {
   trades: Trade[];
   isAnalyzing: boolean;
   aiSettings: AISettings;
+  userMarkets?: { id: string; title: string }[];
 }
 
-export const Dashboard: React.FC<DashboardProps> = ({ trades, isAnalyzing, aiSettings }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ trades, isAnalyzing, aiSettings, userMarkets }) => {
   const stats = useMemo(() => calculateStats(trades), [trades]);
 
   if (isAnalyzing) {
@@ -78,8 +79,21 @@ export const Dashboard: React.FC<DashboardProps> = ({ trades, isAnalyzing, aiSet
           </div>
         </div>
 
-        <div className="lg:col-span-1">
+        <div className="lg:col-span-1 space-y-6">
           <AIAnalysis trades={trades} aiSettings={aiSettings} />
+          
+          {userMarkets && userMarkets.length > 0 && (
+            <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-sm">
+              <h3 className="text-lg font-semibold text-white mb-4">Other Active Markets</h3>
+              <div className="space-y-2">
+                {userMarkets.map((market, idx) => (
+                  <div key={idx} className="p-3 bg-slate-800/50 rounded-lg text-xs font-mono text-slate-400 break-all border border-slate-800 hover:border-slate-700 transition-colors" title={market.id}>
+                    {market.title}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

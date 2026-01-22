@@ -5,17 +5,26 @@ import { Dashboard } from './components/Dashboard';
 import { SettingsModal } from './components/SettingsModal';
 import { FileUploader } from './components/FileUploader';
 import { Trade, AISettings } from './types';
-import { fetchWalletTradesOnMarket, processCsvData } from './utils/dataProcessor';
+import { fetchWalletTradesOnMarket, processCsvData, testMarketConnection, testWalletConnection, fetchUserActiveMarkets } from './utils/dataProcessor';
 
 const App: React.FC = () => {
   const [trades, setTrades] = useState<Trade[]>([]);
   const [walletAddress, setWalletAddress] = useState<string>('');
   const [marketQuery, setMarketQuery] = useState<string>('');
+  const [userMarkets, setUserMarkets] = useState<{ id: string; title: string }[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [isSimulated, setIsSimulated] = useState<boolean>(true);
   const [errors, setErrors] = useState<{ wallet?: string; market?: string }>({});
+  const [connectionStatus, setConnectionStatus] = useState<{ 
+    market: 'idle' | 'testing' | 'connected' | 'failed'; 
+    wallet: 'idle' | 'testing' | 'connected' | 'failed' 
+  }>({ market: 'idle', wallet: 'idle' });
+  const [walletTestLoading, setWalletTestLoading] = useState(false);
+  const [walletTestMarkets, setWalletTestMarkets] = useState<{ id: string; title: string }[] | null>(null);
+  const [walletTestUsername, setWalletTestUsername] = useState<string | undefined>(undefined);
+  const [walletTestProfileImage, setWalletTestProfileImage] = useState<string | undefined>(undefined);
   
   // Settings State
   const [aiSettings, setAiSettings] = useState<AISettings>({
@@ -51,19 +60,71 @@ const App: React.FC = () => {
     return isValid;
   };
 
+  const handleTestWallet = async () => {
+    // Basic validation for wallet existence before testing
+    if (!walletAddress.trim()) {
+        setErrors(prev => ({ ...prev, wallet: "Wallet address is required for testing." }));
+        return;
+    }
+    
+    setWalletTestLoading(true);
+    setWalletTestMarkets(null);
+    setWalletTestUsername(undefined);
+    setWalletTestProfileImage(undefined);
+    // Clear previous wallet errors
+    setErrors(prev => ({ ...prev, wallet: undefined }));
+
+    try {
+        const result = await fetchUserActiveMarkets(walletAddress);
+        setWalletTestMarkets(result.markets);
+        setWalletTestUsername(result.username);
+        setWalletTestProfileImage(result.profileImage);
+    } catch (e) {
+        console.error(e);
+        setErrors(prev => ({ ...prev, wallet: "Connection test failed." }));
+    } finally {
+        setWalletTestLoading(false);
+    }
+  };
+
   const handleAnalyze = async () => {
     if (!validateInputs()) return;
 
     setIsAnalyzing(true);
     setHasSearched(true);
+    setConnectionStatus({ market: 'testing', wallet: 'testing' });
     
     try {
+      // 1. Test Connections
+      const [isMarketConnected, isWalletConnected] = await Promise.all([
+        testMarketConnection(marketQuery),
+        testWalletConnection(walletAddress)
+      ]);
+
+      setConnectionStatus({
+        market: isMarketConnected ? 'connected' : 'failed',
+        wallet: isWalletConnected ? 'connected' : 'failed'
+      });
+
+      if (!isMarketConnected || !isWalletConnected) {
+        // Keep analyzing true for a moment so user sees the failure, then maybe stop?
+        // Or just show the failure state in the dashboard area.
+        // Let's keep isAnalyzing true but show the error state in the render.
+        return;
+      }
+
+      // 2. Fetch Trades if connections are good
       const scrapedTrades = await fetchWalletTradesOnMarket(walletAddress, marketQuery);
       setTrades(scrapedTrades);
-      setIsSimulated(true);
+      
+      // 3. Fetch User Active Markets
+      const activeMarketsResult = await fetchUserActiveMarkets(walletAddress);
+      setUserMarkets(activeMarketsResult.markets);
+
+      setIsSimulated(false);
+      setIsAnalyzing(false); // Done analyzing
     } catch (error) {
       console.error("Failed to fetch trades", error);
-    } finally {
       setIsAnalyzing(false);
     }
   };
@@ -138,19 +199,7 @@ const App: React.FC = () => {
             <div className="w-full max-w-xl bg-slate-900/80 backdrop-blur-xl border border-slate-800 rounded-2xl p-8 shadow-2xl relative overflow-hidden group hover:border-slate-700 transition-all duration-300">
               <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500"></div>
               
-              <div className="mb-6 p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg flex items-start space-x-3">
-                <svg className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <div>
-                  <h4 className="text-sm font-semibold text-amber-500">Simulation Mode Active</h4>
-                  <p className="text-xs text-amber-500/80">
-                    Data will be simulated unless you upload a real scrape export.
-                  </p>
-                </div>
-              </div>
-
-              <div className="space-y-6">
+              <div className="space-y-6 mt-8">
                 <div className="space-y-2">
                   <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider ml-1">Target Market</label>
                   <div className="relative">
@@ -177,25 +226,72 @@ const App: React.FC = () => {
 
                 <div className="space-y-2">
                   <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider ml-1">Wallet Address</label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                      <svg className={`h-5 w-5 ${errors.wallet ? 'text-rose-500' : 'text-slate-500'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
-                      </svg>
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                        <svg className={`h-5 w-5 ${errors.wallet ? 'text-rose-500' : 'text-slate-500'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                        </svg>
+                        </div>
+                        <input
+                        type="text"
+                        className={`w-full bg-slate-950 border text-white text-sm rounded-lg focus:ring-2 block w-full pl-11 p-4 placeholder-slate-600 font-mono transition-all ${
+                            errors.wallet 
+                            ? 'border-rose-500 focus:ring-rose-500 focus:border-rose-500' 
+                            : 'border-slate-800 focus:ring-emerald-500 focus:border-emerald-500'
+                        }`}
+                        placeholder="0x..."
+                        value={walletAddress}
+                        onChange={handleWalletChange}
+                        onKeyDown={handleKeyDown}
+                        />
                     </div>
-                    <input
-                      type="text"
-                      className={`w-full bg-slate-950 border text-white text-sm rounded-lg focus:ring-2 block w-full pl-11 p-4 placeholder-slate-600 font-mono transition-all ${
-                         errors.wallet 
-                          ? 'border-rose-500 focus:ring-rose-500 focus:border-rose-500' 
-                          : 'border-slate-800 focus:ring-emerald-500 focus:border-emerald-500'
-                      }`}
-                      placeholder="0x..."
-                      value={walletAddress}
-                      onChange={handleWalletChange}
-                      onKeyDown={handleKeyDown}
-                    />
+                    <button
+                        onClick={handleTestWallet}
+                        disabled={walletTestLoading || !walletAddress}
+                        className="px-4 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-slate-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center min-w-[80px]"
+                    >
+                        {walletTestLoading ? (
+                            <div className="w-4 h-4 border-2 border-slate-400 border-t-transparent rounded-full animate-spin"></div>
+                        ) : (
+                            "Test"
+                        )}
+                    </button>
                   </div>
+                  {walletTestMarkets && (
+                      <div className="mt-2 p-3 bg-slate-900 border border-slate-800 rounded-lg animate-in fade-in slide-in-from-top-2">
+                          <div className="flex justify-between items-start mb-3">
+                              <div className="flex items-center gap-2">
+                                  {walletTestProfileImage ? (
+                                      <img src={walletTestProfileImage} alt="Profile" className="w-8 h-8 rounded-full border border-slate-700" />
+                                  ) : (
+                                      <div className="w-8 h-8 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-500">
+                                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+                                      </div>
+                                  )}
+                                  <div>
+                                      <div className="flex items-center gap-1.5">
+                                          <span className="text-xs font-semibold text-emerald-400 flex items-center gap-1">
+                                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                                            Verified
+                                          </span>
+                                      </div>
+                                      <p className="text-sm font-bold text-white leading-none mt-0.5">{walletTestUsername || "Unknown User"}</p>
+                                  </div>
+                              </div>
+                              <span className="text-[10px] text-slate-500 bg-slate-950/50 px-2 py-1 rounded border border-slate-800/50">{walletTestMarkets.length} Active Markets</span>
+                          </div>
+                          
+                          <div className="max-h-24 overflow-y-auto space-y-1 pr-1 custom-scrollbar">
+                              {walletTestMarkets.map(m => (
+                                  <div key={m.id} className="text-[10px] font-mono text-slate-400 truncate bg-slate-950/50 px-2 py-1 rounded border border-slate-800/50" title={m.title}>
+                                      {m.title}
+                                  </div>
+                              ))}
+                              {walletTestMarkets.length === 0 && <p className="text-xs text-slate-500 italic">No recent activity found.</p>}
+                          </div>
+                      </div>
+                  )}
                   {errors.wallet && <p className="text-xs text-rose-500 ml-1">{errors.wallet}</p>}
                 </div>
 
@@ -261,7 +357,48 @@ const App: React.FC = () => {
                 New Search
               </button>
             </div>
-            <Dashboard trades={trades} isAnalyzing={isAnalyzing} aiSettings={aiSettings} />
+            {isAnalyzing ? (
+              <div className="flex flex-col items-center justify-center py-20 space-y-8">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-500"></div>
+                <div className="space-y-4 w-full max-w-md">
+                  
+                  {/* Connection Steps */}
+                  <div className="bg-slate-900 border border-slate-800 rounded-lg p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-400 text-sm">Market Connection</span>
+                      {connectionStatus.market === 'testing' && <span className="text-xs text-blue-400 animate-pulse">Checking...</span>}
+                      {connectionStatus.market === 'connected' && <span className="text-xs text-emerald-400 font-bold flex items-center gap-1"><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>Connected</span>}
+                      {connectionStatus.market === 'failed' && <span className="text-xs text-rose-500 font-bold flex items-center gap-1"><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>Not Found</span>}
+                    </div>
+                    
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-400 text-sm">Wallet Connection</span>
+                      {connectionStatus.wallet === 'testing' && <span className="text-xs text-blue-400 animate-pulse">Checking...</span>}
+                      {connectionStatus.wallet === 'connected' && <span className="text-xs text-emerald-400 font-bold flex items-center gap-1"><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>Connected</span>}
+                      {connectionStatus.wallet === 'failed' && <span className="text-xs text-rose-500 font-bold flex items-center gap-1"><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>Failed</span>}
+                    </div>
+                  </div>
+
+                  {(connectionStatus.market === 'failed' || connectionStatus.wallet === 'failed') && (
+                     <div className="bg-rose-500/10 border border-rose-500/20 text-rose-400 p-3 rounded text-xs text-center">
+                        Connection failed. Please check your inputs and try again.
+                        <button 
+                          onClick={() => { setIsAnalyzing(false); setHasSearched(false); }}
+                          className="block mx-auto mt-2 text-white bg-rose-600 hover:bg-rose-500 px-3 py-1 rounded transition-colors"
+                        >
+                          Go Back
+                        </button>
+                     </div>
+                  )}
+
+                  {connectionStatus.market === 'connected' && connectionStatus.wallet === 'connected' && (
+                    <p className="text-slate-400 text-sm text-center animate-pulse">Scanning the blockchain for whale activity...</p>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <Dashboard trades={trades} isAnalyzing={isAnalyzing} aiSettings={aiSettings} userMarkets={userMarkets} />
+            )}
           </div>
         )}
       </main>

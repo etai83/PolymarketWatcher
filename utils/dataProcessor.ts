@@ -1,68 +1,225 @@
 
 import { Trade, DashboardStats } from '../types';
 
+const SEARCH_URL = "https://gamma-api.polymarket.com/public-search";
+const ACTIVITY_URL = "https://data-api.polymarket.com/activity";
+
+interface PolymarketMarket {
+  id: string;
+  conditionId: string;
+  question: string;
+  slug: string;
+  eventTitle: string;
+}
+
+interface ActivityItem {
+  id: string;
+  timestamp: number;
+  type: string;
+  side: string;
+  size: number;
+  price: number;
+  usdcSize: number;
+  outcome: string;
+  transactionHash: string;
+  market?: string;
+  conditionId?: string;
+  // User profile fields that might be present
+  name?: string;
+  pseudonym?: string;
+  profileImage?: string;
+}
+
 /**
- * Generates realistic price history and trades for a specific market
+ * Searches for markets on Polymarket
  */
-const generateMarketHistory = (marketName: string, wallet: string): Trade[] => {
-  const basePrice = 0.45; // Starting prob
-  let currentPrice = basePrice;
-  const trades: Trade[] = [];
-  const now = Date.now();
-  const oneDay = 3600000 * 24;
-  
-  // Generate 40-60 trades
-  const tradeCount = Math.floor(Math.random() * 20) + 40;
-
-  for (let i = 0; i < tradeCount; i++) {
-    // Random walk price
-    const change = (Math.random() - 0.5) * 0.1;
-    currentPrice = Math.max(0.01, Math.min(0.99, currentPrice + change));
+const searchMarkets = async (query: string): Promise<PolymarketMarket[]> => {
+  try {
+    const response = await fetch(`${SEARCH_URL}?q=${encodeURIComponent(query)}`);
+    if (!response.ok) throw new Error('Network response was not ok');
+    const data = await response.json();
     
-    // Time distribution (older to newer)
-    const timeOffset = (tradeCount - i) * (oneDay / 4) + (Math.random() * oneDay); // Spread over a few weeks
-    
-    const isBuy = Math.random() > 0.45; // Slightly more buys usually
-    
-    // Whale size generation: Mix of small probes and large convictions
-    // Skew random towards larger numbers for "Whale" feel
-    // Size is in Shares
-    const sizeBase = Math.random(); 
-    let size;
-    if (sizeBase > 0.9) {
-        size = Math.floor(Math.random() * 15000) + 5000; // Super conviction: 5k-20k shares
-    } else if (sizeBase > 0.6) {
-        size = Math.floor(Math.random() * 4000) + 1000; // Medium: 1k-5k shares
-    } else {
-        size = Math.floor(Math.random() * 900) + 100; // Small: 100-1000 shares
+    const markets: PolymarketMarket[] = [];
+    if (data.events) {
+      for (const event of data.events) {
+        if (event.markets) {
+          for (const market of event.markets) {
+            markets.push({
+              id: market.id,
+              conditionId: market.conditionId,
+              question: market.question,
+              slug: market.slug,
+              eventTitle: event.title
+            });
+          }
+        }
+      }
     }
-
-    trades.push({
-      id: `trade-${i}`,
-      timestamp: new Date(now - timeOffset).toISOString(),
-      market: marketName,
-      side: isBuy ? 'BUY' : 'SELL',
-      size: size,
-      price: currentPrice,
-      total: size * currentPrice, // Total USD Value
-      outcome: 'OPEN'
-    });
+    return markets;
+  } catch (error) {
+    console.error("Error searching markets:", error);
+    return [];
   }
-
-  // Sort by date descending
-  return trades.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 };
 
 /**
- * Simulates an async fetch to a scraper/indexer
+ * Fetches activity for a user on a specific market
  */
-export const fetchWalletTradesOnMarket = async (wallet: string, marketName: string): Promise<Trade[]> => {
-  return new Promise((resolve) => {
-    // Simulate network delay for "scraping"
-    setTimeout(() => {
-      resolve(generateMarketHistory(marketName, wallet));
-    }, 1500);
-  });
+const fetchActivity = async (wallet: string, conditionId?: string): Promise<ActivityItem[]> => {
+  try {
+    const params = new URLSearchParams({
+      limit: '50',
+      sortBy: 'TIMESTAMP',
+      sortDirection: 'DESC',
+      user: wallet
+    });
+    
+    if (conditionId) {
+      params.append('market', conditionId);
+    }
+
+    const response = await fetch(`${ACTIVITY_URL}?${params.toString()}`);
+    if (!response.ok) throw new Error('Network response was not ok');
+    const data = await response.json();
+
+    // Handle different response structures as seen in python script
+    let items: ActivityItem[] = [];
+    if (Array.isArray(data)) {
+        items = data;
+    } else if (Array.isArray(data.activity)) {
+        items = data.activity;
+    } else if (Array.isArray(data.data)) {
+        items = data.data;
+    } else if (Array.isArray(data.items)) {
+        items = data.items;
+    } else if (Array.isArray(data.result)) {
+        items = data.result;
+    }
+
+    return items;
+  } catch (error) {
+    console.error("Error fetching activity:", error);
+    return [];
+  }
+};
+
+export const testMarketConnection = async (query: string): Promise<boolean> => {
+  try {
+    const markets = await searchMarkets(query);
+    return markets.length > 0;
+  } catch (e) {
+    return false;
+  }
+};
+
+export const testWalletConnection = async (wallet: string): Promise<boolean> => {
+  try {
+    // Attempt to fetch general activity for the user (no specific market)
+    // If it returns an array (even empty), the connection is good.
+    const activity = await fetchActivity(wallet);
+    return Array.isArray(activity);
+  } catch (e) {
+    return false;
+  }
+};
+
+export const fetchUserActiveMarkets = async (wallet: string): Promise<{ markets: { id: string, title: string }[], username?: string, profileImage?: string }> => {
+  try {
+    const activity = await fetchActivity(wallet);
+    const uniqueConditionIds = new Set<string>();
+    
+    let username: string | undefined;
+    let profileImage: string | undefined;
+
+    activity.forEach(item => {
+      const marketId = item.conditionId || item.market;
+      if (marketId) {
+        uniqueConditionIds.add(marketId);
+      }
+      // Try to grab user info from any item that has it
+      if (!username && (item.name || item.pseudonym)) {
+          username = item.name || item.pseudonym;
+      }
+      if (!profileImage && item.profileImage) {
+          profileImage = item.profileImage;
+      }
+    });
+
+    const idsToFetch = Array.from(uniqueConditionIds).slice(0, 10);
+    let marketsData: { id: string, title: string }[] = [];
+
+    if (idsToFetch.length > 0) {
+      try {
+        const response = await fetch(`${SEARCH_URL.replace('/public-search', '/markets')}?condition_id=${idsToFetch.join(',')}`);
+        if (response.ok) {
+          const data = await response.json();
+          if (Array.isArray(data)) {
+            marketsData = data.map((m: any) => ({
+              id: m.conditionId, // Use conditionId as ID for consistency
+              title: m.question
+            }));
+          }
+        }
+      } catch (err) {
+        console.error("Failed to fetch market details", err);
+        // Fallback to IDs if fetch fails
+        marketsData = idsToFetch.map(id => ({ id, title: id }));
+      }
+    }
+    
+    return {
+        markets: marketsData,
+        username,
+        profileImage
+    };
+  } catch (error) {
+    console.error("Failed to fetch user active markets", error);
+    return { markets: [] };
+  }
+};
+
+/**
+ * Fetches real trades from Polymarket for a given wallet and market
+ */
+export const fetchWalletTradesOnMarket = async (wallet: string, marketQuery: string): Promise<Trade[]> => {
+  try {
+    // 1. Search for the market
+    const markets = await searchMarkets(marketQuery);
+    
+    if (markets.length === 0) {
+      console.warn("No markets found for query:", marketQuery);
+      return [];
+    }
+
+    // Default to the first result for now
+    // In a future update, we could allow the user to select from multiple matches
+    const targetMarket = markets[0];
+    
+    // 2. Fetch activity
+    const activities = await fetchActivity(wallet, targetMarket.conditionId);
+    
+    // 3. Map to Trade objects
+    return activities.map(item => {
+        const side = item.side ? item.side.toUpperCase() : 'BUY'; // Default/Fallback
+        const size = item.size || 0;
+        const price = item.price || 0;
+        
+        return {
+            id: item.transactionHash || item.id || Math.random().toString(),
+            timestamp: new Date(item.timestamp * 1000).toISOString(),
+            market: targetMarket.question,
+            side: (side === 'BUY' || side === 'SELL') ? side as 'BUY' | 'SELL' : 'BUY',
+            size: size,
+            price: price,
+            total: item.usdcSize || (size * price),
+            outcome: item.outcome || 'Unknown'
+        };
+    });
+
+  } catch (error) {
+    console.error("Failed to fetch wallet trades:", error);
+    throw error;
+  }
 };
 
 /**
@@ -141,16 +298,18 @@ export const calculateStats = (trades: Trade[]): DashboardStats => {
   const buyVolume = trades.filter(t => t.side === 'BUY').reduce((sum, t) => sum + t.total, 0);
   const sellVolume = trades.filter(t => t.side === 'SELL').reduce((sum, t) => sum + t.total, 0);
   
-  // Estimate PnL based on VWAP logic
-  const pnl = sellVolume - (buyVolume * 0.85); // Mock positive PnL bias for "Whales"
+  // Simple Net Cash Flow (Realized)
+  const pnl = sellVolume - buyVolume;
 
-  const winningTrades = trades.filter(t => t.price > 0.6 && t.side === 'BUY' || t.price < 0.4 && t.side === 'SELL').length;
+  // Win rate is difficult to calculate without knowing the market outcome or current price for open positions.
+  // We'll leave it as a placeholder or based on explicit 'WIN' outcome if available in the future.
+  const winningTrades = 0; 
 
   return {
     totalTrades: trades.length,
     totalVolume,
     pnl,
-    winRate: trades.length > 0 ? winningTrades / trades.length : 0,
+    winRate: 0, // Placeholder
     averageTradeSize: trades.length > 0 ? totalVolume / trades.length : 0
   };
 };
