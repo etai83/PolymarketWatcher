@@ -1,0 +1,86 @@
+
+import { Trade, DashboardStats } from '../types';
+
+/**
+ * Generates realistic price history and trades for a specific market
+ */
+const generateMarketHistory = (marketName: string, wallet: string): Trade[] => {
+  const basePrice = 0.45; // Starting prob
+  let currentPrice = basePrice;
+  const trades: Trade[] = [];
+  const now = Date.now();
+  const oneDay = 3600000 * 24;
+  
+  // Generate 40-60 trades
+  const tradeCount = Math.floor(Math.random() * 20) + 40;
+
+  for (let i = 0; i < tradeCount; i++) {
+    // Random walk price
+    const change = (Math.random() - 0.5) * 0.1;
+    currentPrice = Math.max(0.01, Math.min(0.99, currentPrice + change));
+    
+    // Time distribution (older to newer)
+    const timeOffset = (tradeCount - i) * (oneDay / 4) + (Math.random() * oneDay); // Spread over a few weeks
+    
+    const isBuy = Math.random() > 0.45; // Slightly more buys usually
+    const size = Math.floor(Math.random() * 2000) + 50; // Random size $50 - $2050
+
+    trades.push({
+      id: `trade-${i}`,
+      timestamp: new Date(now - timeOffset).toISOString(),
+      market: marketName,
+      side: isBuy ? 'BUY' : 'SELL',
+      size: size,
+      price: currentPrice,
+      total: size * currentPrice,
+      outcome: 'OPEN'
+    });
+  }
+
+  // Sort by date descending
+  return trades.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+};
+
+/**
+ * Simulates an async fetch to a scraper/indexer
+ */
+export const fetchWalletTradesOnMarket = async (wallet: string, marketName: string): Promise<Trade[]> => {
+  return new Promise((resolve) => {
+    // Simulate network delay for "scraping"
+    setTimeout(() => {
+      resolve(generateMarketHistory(marketName, wallet));
+    }, 2000);
+  });
+};
+
+// Deprecated CSV processor kept for type safety if needed, but unused in new flow
+export const processCsvData = (csvText: string): Trade[] => {
+    return []; 
+};
+
+export const calculateStats = (trades: Trade[]): DashboardStats => {
+  const totalVolume = trades.reduce((sum, t) => sum + t.total, 0);
+  const buyVolume = trades.filter(t => t.side === 'BUY').reduce((sum, t) => sum + t.total, 0);
+  const sellVolume = trades.filter(t => t.side === 'SELL').reduce((sum, t) => sum + t.total, 0);
+  
+  // Estimate PnL based on VWAP logic
+  // Assume average sell price vs average buy price
+  const avgBuyPrice = buyVolume > 0 ? trades.filter(t => t.side === 'BUY').reduce((acc, t) => acc + (t.price * t.size), 0) / trades.filter(t => t.side === 'BUY').reduce((acc, t) => acc + t.size, 0) : 0;
+  const avgSellPrice = sellVolume > 0 ? trades.filter(t => t.side === 'SELL').reduce((acc, t) => acc + (t.price * t.size), 0) / trades.filter(t => t.side === 'SELL').reduce((acc, t) => acc + t.size, 0) : 0;
+  
+  // If they sold, realize PnL. If holding, unrealized based on last price.
+  // Simplified: (Sell Vol) - (Buy Vol associated with those shares). 
+  // For this demo, we'll use a simpler heuristic: Total Sell Value - Cost Basis of Sold Tokens.
+  // But to keep it simple and visual:
+  const pnl = sellVolume - (buyVolume * 0.85); // Mock positive PnL bias for "Whales"
+
+  const winningTrades = trades.filter(t => t.price > 0.6 && t.side === 'BUY' || t.price < 0.4 && t.side === 'SELL').length;
+
+  return {
+    totalTrades: trades.length,
+    totalVolume,
+    pnl,
+    winRate: trades.length > 0 ? winningTrades / trades.length : 0,
+    averageTradeSize: trades.length > 0 ? totalVolume / trades.length : 0
+  };
+};

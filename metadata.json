@@ -1,0 +1,5 @@
+{
+  "name": "Polymarket Whale Watcher",
+  "description": "An interactive trading dashboard for Polymarket whales. Analyze trade history, visualize performance, and get AI-driven strategy insights from your wallet activity.",
+  "requestFramePermissions": []
+}
