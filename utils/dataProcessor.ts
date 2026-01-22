@@ -126,15 +126,25 @@ export const testWalletConnection = async (wallet: string): Promise<boolean> => 
 export const fetchUserActiveMarkets = async (wallet: string): Promise<{ markets: { id: string, title: string }[], username?: string, profileImage?: string }> => {
   try {
     const activity = await fetchActivity(wallet);
-    const uniqueConditionIds = new Set<string>();
+    const marketInfoMap = new Map<string, string>(); // Map of conditionId -> market name
     
     let username: string | undefined;
     let profileImage: string | undefined;
 
+    // First pass: collect market IDs and any available names from activity
     activity.forEach(item => {
       const marketId = item.conditionId || item.market;
       if (marketId) {
-        uniqueConditionIds.add(marketId);
+        // Store the market name if we have it and don't already have a name for this ID
+        // Activity items might include a 'title' or 'marketTitle' or similar field
+        const activityItem = item as any;
+        const marketName = activityItem.marketTitle || activityItem.marketQuestion || activityItem.title || activityItem.question;
+        if (!marketInfoMap.has(marketId)) {
+          marketInfoMap.set(marketId, marketName || '');
+        } else if (marketName && !marketInfoMap.get(marketId)) {
+          // Update if we now have a name but didn't before
+          marketInfoMap.set(marketId, marketName);
+        }
       }
       // Try to grab user info from any item that has it
       if (!username && (item.name || item.pseudonym)) {
@@ -145,7 +155,7 @@ export const fetchUserActiveMarkets = async (wallet: string): Promise<{ markets:
       }
     });
 
-    const idsToFetch = Array.from(uniqueConditionIds).slice(0, 10);
+    const idsToFetch = Array.from(marketInfoMap.keys()).slice(0, 10);
     let marketsData: { id: string, title: string }[] = [];
 
     if (idsToFetch.length > 0) {
@@ -156,14 +166,31 @@ export const fetchUserActiveMarkets = async (wallet: string): Promise<{ markets:
           if (Array.isArray(data)) {
             marketsData = data.map((m: any) => ({
               id: m.conditionId, // Use conditionId as ID for consistency
-              title: m.question
+              title: m.question || m.title || m.marketTitle || 'Unknown Market'
             }));
           }
         }
       } catch (err) {
         console.error("Failed to fetch market details", err);
-        // Fallback to IDs if fetch fails
-        marketsData = idsToFetch.map(id => ({ id, title: id }));
+      }
+      
+      // If API fetch failed or returned empty/partial data, use activity-derived names as fallback
+      if (marketsData.length === 0) {
+        marketsData = idsToFetch.map(id => ({ 
+          id, 
+          title: marketInfoMap.get(id) || 'Unknown Market'
+        }));
+      } else {
+        // Fill in any missing markets from the API response using activity data
+        const fetchedIds = new Set(marketsData.map(m => m.id));
+        idsToFetch.forEach(id => {
+          if (!fetchedIds.has(id)) {
+            marketsData.push({
+              id,
+              title: marketInfoMap.get(id) || 'Unknown Market'
+            });
+          }
+        });
       }
     }
     
