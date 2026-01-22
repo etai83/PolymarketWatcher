@@ -38,7 +38,7 @@ const searchMarkets = async (query: string): Promise<PolymarketMarket[]> => {
     const response = await fetch(`${SEARCH_URL}?q=${encodeURIComponent(query)}`);
     if (!response.ok) throw new Error('Network response was not ok');
     const data = await response.json();
-    
+
     const markets: PolymarketMarket[] = [];
     if (data.events) {
       for (const event of data.events) {
@@ -73,7 +73,7 @@ const fetchActivity = async (wallet: string, conditionId?: string): Promise<Acti
       sortDirection: 'DESC',
       user: wallet
     });
-    
+
     if (conditionId) {
       params.append('market', conditionId);
     }
@@ -85,15 +85,15 @@ const fetchActivity = async (wallet: string, conditionId?: string): Promise<Acti
     // Handle different response structures as seen in python script
     let items: ActivityItem[] = [];
     if (Array.isArray(data)) {
-        items = data;
+      items = data;
     } else if (Array.isArray(data.activity)) {
-        items = data.activity;
+      items = data.activity;
     } else if (Array.isArray(data.data)) {
-        items = data.data;
+      items = data.data;
     } else if (Array.isArray(data.items)) {
-        items = data.items;
+      items = data.items;
     } else if (Array.isArray(data.result)) {
-        items = data.result;
+      items = data.result;
     }
 
     return items;
@@ -127,7 +127,7 @@ export const fetchUserActiveMarkets = async (wallet: string): Promise<{ markets:
   try {
     const activity = await fetchActivity(wallet);
     const marketInfoMap = new Map<string, string>(); // Map of conditionId -> market name
-    
+
     let username: string | undefined;
     let profileImage: string | undefined;
 
@@ -148,10 +148,10 @@ export const fetchUserActiveMarkets = async (wallet: string): Promise<{ markets:
       }
       // Try to grab user info from any item that has it
       if (!username && (item.name || item.pseudonym)) {
-          username = item.name || item.pseudonym;
+        username = item.name || item.pseudonym;
       }
       if (!profileImage && item.profileImage) {
-          profileImage = item.profileImage;
+        profileImage = item.profileImage;
       }
     });
 
@@ -173,11 +173,11 @@ export const fetchUserActiveMarkets = async (wallet: string): Promise<{ markets:
       } catch (err) {
         console.error("Failed to fetch market details", err);
       }
-      
+
       // If API fetch failed or returned empty/partial data, use activity-derived names as fallback
       if (marketsData.length === 0) {
-        marketsData = idsToFetch.map(id => ({ 
-          id, 
+        marketsData = idsToFetch.map(id => ({
+          id,
           title: marketInfoMap.get(id) || 'Unknown Market'
         }));
       } else {
@@ -193,11 +193,11 @@ export const fetchUserActiveMarkets = async (wallet: string): Promise<{ markets:
         });
       }
     }
-    
+
     return {
-        markets: marketsData,
-        username,
-        profileImage
+      markets: marketsData,
+      username,
+      profileImage
     };
   } catch (error) {
     console.error("Failed to fetch user active markets", error);
@@ -207,40 +207,54 @@ export const fetchUserActiveMarkets = async (wallet: string): Promise<{ markets:
 
 /**
  * Fetches real trades from Polymarket for a given wallet and market
+ * @param wallet - The wallet address to fetch trades for
+ * @param marketQuery - The market search query (used if conditionId not provided)
+ * @param conditionId - Optional direct conditionId (bypasses search, useful for closed/expired markets)
  */
-export const fetchWalletTradesOnMarket = async (wallet: string, marketQuery: string): Promise<Trade[]> => {
+export const fetchWalletTradesOnMarket = async (wallet: string, marketQuery: string, conditionId?: string): Promise<Trade[]> => {
   try {
-    // 1. Search for the market
-    const markets = await searchMarkets(marketQuery);
-    
-    if (markets.length === 0) {
-      console.warn("No markets found for query:", marketQuery);
-      return [];
+    let targetMarketConditionId: string;
+    let targetMarketQuestion: string;
+
+    if (conditionId) {
+      // Use provided conditionId directly (from verified market selection)
+      targetMarketConditionId = conditionId;
+      targetMarketQuestion = marketQuery; // Use the display name passed in
+    } else {
+      // 1. Search for the market
+      const markets = await searchMarkets(marketQuery);
+
+      if (markets.length === 0) {
+        console.warn("No markets found for query:", marketQuery);
+        return [];
+      }
+
+      // Default to the first result for now
+      // In a future update, we could allow the user to select from multiple matches
+      const targetMarket = markets[0];
+      targetMarketConditionId = targetMarket.conditionId;
+      targetMarketQuestion = targetMarket.question;
     }
 
-    // Default to the first result for now
-    // In a future update, we could allow the user to select from multiple matches
-    const targetMarket = markets[0];
-    
     // 2. Fetch activity
-    const activities = await fetchActivity(wallet, targetMarket.conditionId);
-    
+    const activities = await fetchActivity(wallet, targetMarketConditionId);
+
     // 3. Map to Trade objects
     return activities.map(item => {
-        const side = item.side ? item.side.toUpperCase() : 'BUY'; // Default/Fallback
-        const size = item.size || 0;
-        const price = item.price || 0;
-        
-        return {
-            id: item.transactionHash || item.id || Math.random().toString(),
-            timestamp: new Date(item.timestamp * 1000).toISOString(),
-            market: targetMarket.question,
-            side: (side === 'BUY' || side === 'SELL') ? side as 'BUY' | 'SELL' : 'BUY',
-            size: size,
-            price: price,
-            total: item.usdcSize || (size * price),
-            outcome: item.outcome || 'Unknown'
-        };
+      const side = item.side ? item.side.toUpperCase() : 'BUY'; // Default/Fallback
+      const size = item.size || 0;
+      const price = item.price || 0;
+
+      return {
+        id: item.transactionHash || item.id || Math.random().toString(),
+        timestamp: new Date(item.timestamp * 1000).toISOString(),
+        market: targetMarketQuestion,
+        side: (side === 'BUY' || side === 'SELL') ? side as 'BUY' | 'SELL' : 'BUY',
+        size: size,
+        price: price,
+        total: item.usdcSize || (size * price),
+        outcome: item.outcome || 'Unknown'
+      };
     });
 
   } catch (error) {
@@ -258,9 +272,9 @@ export const processCsvData = (csvText: string): Trade[] => {
 
   // Parse headers
   const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
-  
+
   const getIdx = (name: string) => headers.indexOf(name);
-  
+
   const idxTimestamp = getIdx('timestampIso');
   const idxMarket = getIdx('marketQuestion');
   const idxSide = getIdx('side');
@@ -280,7 +294,7 @@ export const processCsvData = (csvText: string): Trade[] => {
     const values: string[] = [];
     let currentVal = '';
     let inQuotes = false;
-    
+
     for (let j = 0; j < line.length; j++) {
       const char = line[j];
       if (char === '"') {
@@ -324,13 +338,13 @@ export const calculateStats = (trades: Trade[]): DashboardStats => {
   const totalVolume = trades.reduce((sum, t) => sum + t.total, 0);
   const buyVolume = trades.filter(t => t.side === 'BUY').reduce((sum, t) => sum + t.total, 0);
   const sellVolume = trades.filter(t => t.side === 'SELL').reduce((sum, t) => sum + t.total, 0);
-  
+
   // Simple Net Cash Flow (Realized)
   const pnl = sellVolume - buyVolume;
 
   // Win rate is difficult to calculate without knowing the market outcome or current price for open positions.
   // We'll leave it as a placeholder or based on explicit 'WIN' outcome if available in the future.
-  const winningTrades = 0; 
+  const winningTrades = 0;
 
   return {
     totalTrades: trades.length,
