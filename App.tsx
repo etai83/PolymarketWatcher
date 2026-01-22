@@ -4,8 +4,11 @@ import { Header } from './components/Header';
 import { Dashboard } from './components/Dashboard';
 import { SettingsModal } from './components/SettingsModal';
 import { FileUploader } from './components/FileUploader';
+import { ArbitrageScanner } from './components/ArbitrageScanner';
 import { Trade, AISettings } from './types';
 import { fetchWalletTradesOnMarket, processCsvData, testMarketConnection, testWalletConnection, fetchUserActiveMarkets } from './utils/dataProcessor';
+
+type TabName = 'dashboard' | 'markets' | 'watchlist';
 
 const App: React.FC = () => {
   const [trades, setTrades] = useState<Trade[]>([]);
@@ -26,13 +29,16 @@ const App: React.FC = () => {
   const [walletTestUsername, setWalletTestUsername] = useState<string | undefined>(undefined);
   const [walletTestProfileImage, setWalletTestProfileImage] = useState<string | undefined>(undefined);
   const [selectedMarketConditionId, setSelectedMarketConditionId] = useState<string | null>(null);
+  const [currentTab, setCurrentTab] = useState<TabName>('dashboard');
 
   // Settings State
   const [aiSettings, setAiSettings] = useState<AISettings>({
     provider: 'gemini',
     ollamaModel: 'llama3',
     ollamaUrl: 'http://localhost:11434',
-    geminiApiKey: ''
+    geminiApiKey: '',
+    opencodeApiKey: '',
+    opencodeModel: 'qwen-3-coder-480b'
   });
 
   const validateInputs = (): boolean => {
@@ -177,7 +183,7 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-950 text-slate-200 font-sans selection:bg-emerald-500/30">
-      <Header onOpenSettings={() => setShowSettings(true)} />
+      <Header onOpenSettings={() => setShowSettings(true)} currentTab={currentTab} onTabChange={setCurrentTab} />
 
       <SettingsModal
         isOpen={showSettings}
@@ -187,7 +193,31 @@ const App: React.FC = () => {
       />
 
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 py-12 flex flex-col">
-        {!hasSearched ? (
+        {/* Markets Tab - Arbitrage Scanner */}
+        {currentTab === 'markets' ? (
+          <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="text-center space-y-4 mb-8">
+              <h1 className="text-3xl font-bold text-white">
+                Market <span className="text-amber-400">Arbitrage Scanner</span>
+              </h1>
+              <p className="text-slate-400 max-w-xl mx-auto">
+                Scan Polymarket for opportunities where YES + NO prices sum to less than $1.00
+              </p>
+            </div>
+            <div className="max-w-2xl mx-auto">
+              <ArbitrageScanner />
+            </div>
+          </div>
+        ) : currentTab === 'watchlist' ? (
+          <div className="flex-1 flex items-center justify-center text-slate-500">
+            <div className="text-center">
+              <svg className="w-16 h-16 mx-auto mb-4 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+              </svg>
+              <p className="text-lg">Watchlist coming soon</p>
+            </div>
+          </div>
+        ) : !hasSearched ? (
           <div className="flex-1 flex flex-col items-center justify-center -mt-20">
             <div className="text-center space-y-6 mb-12 max-w-2xl">
               <div className="inline-flex items-center justify-center p-2 bg-emerald-500/10 rounded-full mb-4 ring-1 ring-emerald-500/30">
@@ -335,7 +365,7 @@ const App: React.FC = () => {
             <div className="mt-12 flex items-center space-x-8 text-slate-600 text-sm font-medium">
               <span className="flex items-center"><span className="w-2 h-2 bg-emerald-500 rounded-full mr-2"></span>Live Scraper</span>
               <span className="flex items-center"><span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>Deep Analytics</span>
-              <span className="flex items-center"><span className={`w-2 h-2 rounded-full mr-2 ${aiSettings.provider === 'ollama' ? 'bg-blue-500' : 'bg-purple-500'}`}></span>{aiSettings.provider === 'ollama' ? 'Local AI' : 'Gemini 2.0 Flash'}</span>
+              <span className="flex items-center"><span className={`w-2 h-2 rounded-full mr-2 ${aiSettings.provider === 'ollama' ? 'bg-blue-500' : aiSettings.provider === 'opencode' ? 'bg-orange-500' : 'bg-purple-500'}`}></span>{aiSettings.provider === 'ollama' ? 'Local AI' : aiSettings.provider === 'opencode' ? 'OpenCode Zen' : 'Gemini 2.0 Flash'}</span>
             </div>
           </div>
         ) : (
@@ -423,7 +453,7 @@ const App: React.FC = () => {
       <footer className="border-t border-slate-900 py-8 bg-slate-950">
         <div className="max-w-7xl mx-auto px-4 text-center">
           <p className="text-slate-600 text-sm">
-            Polymarket Whale Watcher &copy; 2024 • Powered by {aiSettings.provider === 'gemini' ? 'Gemini AI' : 'Ollama'} • <span className="text-slate-500">Not financial advice</span>
+            Polymarket Whale Watcher &copy; 2024 • Powered by {aiSettings.provider === 'gemini' ? 'Gemini AI' : aiSettings.provider === 'opencode' ? 'OpenCode Zen' : 'Ollama'} • <span className="text-slate-500">Not financial advice</span>
           </p>
         </div>
       </footer>

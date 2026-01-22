@@ -1,11 +1,15 @@
 
 import React from 'react';
 
+type TabName = 'dashboard' | 'markets' | 'watchlist';
+
 interface HeaderProps {
   onOpenSettings: () => void;
+  currentTab: TabName;
+  onTabChange: (tab: TabName) => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ onOpenSettings }) => {
+export const Header: React.FC<HeaderProps> = ({ onOpenSettings, currentTab, onTabChange }) => {
   return (
     <header className="sticky top-0 z-50 bg-slate-950/80 backdrop-blur-md border-b border-slate-900">
       <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
@@ -17,16 +21,31 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSettings }) => {
           </div>
           <span className="text-xl font-bold tracking-tight text-white">Whale Watcher</span>
         </div>
-        
+
         <nav className="flex items-center space-x-6">
           <div className="hidden md:flex items-center space-x-6">
-            <a href="#" className="text-slate-400 hover:text-white transition-colors">Dashboard</a>
-            <a href="#" className="text-slate-400 hover:text-white transition-colors">Markets</a>
-            <a href="#" className="text-slate-400 hover:text-white transition-colors">Watchlist</a>
+            <button
+              onClick={() => onTabChange('dashboard')}
+              className={`transition-colors ${currentTab === 'dashboard' ? 'text-white font-semibold' : 'text-slate-400 hover:text-white'}`}
+            >
+              Dashboard
+            </button>
+            <button
+              onClick={() => onTabChange('markets')}
+              className={`transition-colors ${currentTab === 'markets' ? 'text-white font-semibold' : 'text-slate-400 hover:text-white'}`}
+            >
+              Markets
+            </button>
+            <button
+              onClick={() => onTabChange('watchlist')}
+              className={`transition-colors ${currentTab === 'watchlist' ? 'text-white font-semibold' : 'text-slate-400 hover:text-white'}`}
+            >
+              Watchlist
+            </button>
           </div>
           <div className="h-6 w-px bg-slate-800 mx-2 hidden md:block"></div>
-          
-          <button 
+
+          <button
             onClick={onOpenSettings}
             className="text-slate-400 hover:text-emerald-400 transition-colors p-2 hover:bg-slate-800/50 rounded-lg"
             title="Settings"

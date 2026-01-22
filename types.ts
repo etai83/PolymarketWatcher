@@ -25,11 +25,13 @@ export interface AnalysisResult {
   strategy: string;
 }
 
-export type AIProvider = 'gemini' | 'ollama';
+export type AIProvider = 'gemini' | 'ollama' | 'opencode';
 
 export interface AISettings {
   provider: AIProvider;
   ollamaModel: string;
   ollamaUrl: string;
   geminiApiKey: string;
+  opencodeApiKey: string;
+  opencodeModel: string;
 }

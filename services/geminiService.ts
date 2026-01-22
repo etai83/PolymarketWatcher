@@ -4,11 +4,11 @@ import { Trade, AISettings } from "../types";
 
 export const runAnalysis = async (trades: Trade[], settings: AISettings): Promise<string> => {
   if (trades.length === 0) return "No trades available to analyze.";
-  
+
   const marketName = trades[0].market;
-  
+
   // Create a compact summary of trades
-  const tradeSummary = trades.slice(0, 60).map(t => 
+  const tradeSummary = trades.slice(0, 60).map(t =>
     `[${t.timestamp.split('T')[0]}] ${t.side} ${t.size} shares @ $${t.price.toFixed(2)}`
   ).join('\n');
 
@@ -32,6 +32,8 @@ export const runAnalysis = async (trades: Trade[], settings: AISettings): Promis
   try {
     if (settings.provider === 'ollama') {
       return runOllamaAnalysis(prompt, settings);
+    } else if (settings.provider === 'opencode') {
+      return runOpenCodeAnalysis(prompt, settings);
     } else {
       return runGeminiAnalysis(prompt, settings.geminiApiKey);
     }
@@ -44,9 +46,9 @@ export const runAnalysis = async (trades: Trade[], settings: AISettings): Promis
 const runGeminiAnalysis = async (prompt: string, apiKey: string): Promise<string> => {
   const finalKey = apiKey || process.env.API_KEY || '';
   if (!finalKey) {
-     return "Please provide a Gemini API Key in settings or configure the environment variable.";
+    return "Please provide a Gemini API Key in settings or configure the environment variable.";
   }
-  
+
   const ai = new GoogleGenAI({ apiKey: finalKey });
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
@@ -72,7 +74,7 @@ const runOllamaAnalysis = async (prompt: string, settings: AISettings): Promise<
       }),
       signal: controller.signal
     });
-    
+
     clearTimeout(timeoutId);
 
     if (!response.ok) {
@@ -81,6 +83,49 @@ const runOllamaAnalysis = async (prompt: string, settings: AISettings): Promise<
 
     const data = await response.json();
     return data.response || "No response from Ollama.";
+  } catch (error) {
+    clearTimeout(timeoutId);
+    throw error;
+  }
+};
+
+const runOpenCodeAnalysis = async (prompt: string, settings: AISettings): Promise<string> => {
+  if (!settings.opencodeApiKey) {
+    return "Please provide an OpenCode Zen API Key in settings. Get one at opencode.ai/auth";
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 90000); // 90s timeout for cloud models
+
+  try {
+    const response = await fetch('https://opencode.ai/zen/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${settings.opencodeApiKey}`,
+      },
+      body: JSON.stringify({
+        model: settings.opencodeModel || 'qwen-3-coder-480b',
+        messages: [
+          {
+            role: 'user',
+            content: prompt,
+          }
+        ],
+        stream: false,
+      }),
+      signal: controller.signal
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`OpenCode API error: ${response.status} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    return data.choices?.[0]?.message?.content || "No response from OpenCode.";
   } catch (error) {
     clearTimeout(timeoutId);
     throw error;
