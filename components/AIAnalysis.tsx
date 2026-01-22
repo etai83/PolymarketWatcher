@@ -1,24 +1,25 @@
 
 import React, { useState } from 'react';
-import { Trade } from '../types';
+import { Trade, AISettings } from '../types';
 import { runAnalysis } from '../services/geminiService';
 
 interface AIAnalysisProps {
   trades: Trade[];
+  aiSettings: AISettings;
 }
 
-export const AIAnalysis: React.FC<AIAnalysisProps> = ({ trades }) => {
+export const AIAnalysis: React.FC<AIAnalysisProps> = ({ trades, aiSettings }) => {
   const [analysis, setAnalysis] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   const handleAnalyze = async () => {
     setLoading(true);
     try {
-      const result = await runAnalysis(trades);
+      const result = await runAnalysis(trades, aiSettings);
       setAnalysis(result);
     } catch (err) {
       console.error(err);
-      setAnalysis("Failed to perform AI analysis. Please check your API key configuration.");
+      setAnalysis(`Failed to perform AI analysis using ${aiSettings.provider}. Please check your configuration.`);
     } finally {
       setLoading(false);
     }
@@ -27,12 +28,14 @@ export const AIAnalysis: React.FC<AIAnalysisProps> = ({ trades }) => {
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-sm sticky top-24">
       <div className="flex items-center space-x-2 mb-4">
-        <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-        <h3 className="text-lg font-semibold text-white">AI Strategy Journal</h3>
+        <div className={`w-2 h-2 rounded-full animate-pulse ${aiSettings.provider === 'ollama' ? 'bg-blue-500' : 'bg-emerald-500'}`}></div>
+        <h3 className="text-lg font-semibold text-white">
+          {aiSettings.provider === 'ollama' ? 'Local AI Strategy' : 'Gemini Strategy Journal'}
+        </h3>
       </div>
       
       <p className="text-slate-400 text-sm mb-6">
-        Generate deep insights into this trader's behavior. Did they sell too early? What is their most effective niche?
+        Generate deep insights into this trader's behavior using {aiSettings.provider === 'ollama' ? aiSettings.ollamaModel : 'Gemini 2.0 Flash'}.
       </p>
 
       {analysis ? (
@@ -53,7 +56,13 @@ export const AIAnalysis: React.FC<AIAnalysisProps> = ({ trades }) => {
         <button
           onClick={handleAnalyze}
           disabled={loading}
-          className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 disabled:text-slate-600 text-white font-medium py-3 rounded-lg flex items-center justify-center transition-all"
+          className={`w-full text-white font-medium py-3 rounded-lg flex items-center justify-center transition-all ${
+            loading 
+              ? 'bg-slate-800 text-slate-500' 
+              : aiSettings.provider === 'ollama'
+                ? 'bg-blue-600 hover:bg-blue-500'
+                : 'bg-emerald-600 hover:bg-emerald-500'
+          }`}
         >
           {loading ? (
             <>

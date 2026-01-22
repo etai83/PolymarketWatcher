@@ -2,7 +2,8 @@
 import React, { useState } from 'react';
 import { Header } from './components/Header';
 import { Dashboard } from './components/Dashboard';
-import { Trade } from './types';
+import { SettingsModal } from './components/SettingsModal';
+import { Trade, AISettings } from './types';
 import { fetchWalletTradesOnMarket } from './utils/dataProcessor';
 
 const App: React.FC = () => {
@@ -11,6 +12,15 @@ const App: React.FC = () => {
   const [marketQuery, setMarketQuery] = useState<string>('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  
+  // Settings State
+  const [aiSettings, setAiSettings] = useState<AISettings>({
+    provider: 'gemini',
+    ollamaModel: 'llama3',
+    ollamaUrl: 'http://localhost:11434',
+    geminiApiKey: ''
+  });
 
   const handleAnalyze = async () => {
     if (!walletAddress || !marketQuery) return;
@@ -19,7 +29,6 @@ const App: React.FC = () => {
     setHasSearched(true);
     
     try {
-      // Simulate the scraping process
       const scrapedTrades = await fetchWalletTradesOnMarket(walletAddress, marketQuery);
       setTrades(scrapedTrades);
     } catch (error) {
@@ -37,7 +46,14 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-950 text-slate-200 font-sans selection:bg-emerald-500/30">
-      <Header />
+      <Header onOpenSettings={() => setShowSettings(true)} />
+      
+      <SettingsModal 
+        isOpen={showSettings} 
+        onClose={() => setShowSettings(false)}
+        settings={aiSettings}
+        onSave={setAiSettings}
+      />
       
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 py-12 flex flex-col">
         {!hasSearched ? (
@@ -109,7 +125,7 @@ const App: React.FC = () => {
             <div className="mt-12 flex items-center space-x-8 text-slate-600 text-sm font-medium">
               <span className="flex items-center"><span className="w-2 h-2 bg-emerald-500 rounded-full mr-2"></span>Live Scraper</span>
               <span className="flex items-center"><span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>Deep Analytics</span>
-              <span className="flex items-center"><span className="w-2 h-2 bg-purple-500 rounded-full mr-2"></span>Gemini 2.0 Flash</span>
+              <span className="flex items-center"><span className={`w-2 h-2 rounded-full mr-2 ${aiSettings.provider === 'ollama' ? 'bg-blue-500' : 'bg-purple-500'}`}></span>{aiSettings.provider === 'ollama' ? 'Local AI' : 'Gemini 2.0 Flash'}</span>
             </div>
           </div>
         ) : (
@@ -135,7 +151,7 @@ const App: React.FC = () => {
                 New Search
               </button>
             </div>
-            <Dashboard trades={trades} isAnalyzing={isAnalyzing} />
+            <Dashboard trades={trades} isAnalyzing={isAnalyzing} aiSettings={aiSettings} />
           </div>
         )}
       </main>
@@ -143,7 +159,7 @@ const App: React.FC = () => {
       <footer className="border-t border-slate-900 py-8 bg-slate-950">
         <div className="max-w-7xl mx-auto px-4 text-center">
           <p className="text-slate-600 text-sm">
-            Polymarket Whale Watcher &copy; 2024 • Powered by Gemini AI • <span className="text-slate-500">Not financial advice</span>
+            Polymarket Whale Watcher &copy; 2024 • Powered by {aiSettings.provider === 'gemini' ? 'Gemini AI' : 'Ollama'} • <span className="text-slate-500">Not financial advice</span>
           </p>
         </div>
       </footer>

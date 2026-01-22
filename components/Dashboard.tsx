@@ -1,6 +1,6 @@
 
 import React, { useMemo } from 'react';
-import { Trade } from '../types';
+import { Trade, AISettings } from '../types';
 import { TradeCharts } from './TradeCharts';
 import { TradeTable } from './TradeTable';
 import { AIAnalysis } from './AIAnalysis';
@@ -9,9 +9,10 @@ import { calculateStats } from '../utils/dataProcessor';
 interface DashboardProps {
   trades: Trade[];
   isAnalyzing: boolean;
+  aiSettings: AISettings;
 }
 
-export const Dashboard: React.FC<DashboardProps> = ({ trades, isAnalyzing }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ trades, isAnalyzing, aiSettings }) => {
   const stats = useMemo(() => calculateStats(trades), [trades]);
 
   if (isAnalyzing) {
@@ -78,7 +79,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ trades, isAnalyzing }) => 
         </div>
 
         <div className="lg:col-span-1">
-          <AIAnalysis trades={trades} />
+          <AIAnalysis trades={trades} aiSettings={aiSettings} />
         </div>
       </div>
     </div>

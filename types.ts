@@ -24,3 +24,12 @@ export interface AnalysisResult {
   weaknesses: string[];
   strategy: string;
 }
+
+export type AIProvider = 'gemini' | 'ollama';
+
+export interface AISettings {
+  provider: AIProvider;
+  ollamaModel: string;
+  ollamaUrl: string;
+  geminiApiKey: string;
+}
