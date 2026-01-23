@@ -1,8 +1,22 @@
 
 import { Trade, DashboardStats } from '../types';
 
-const SEARCH_URL = "https://gamma-api.polymarket.com/public-search";
-const ACTIVITY_URL = "https://data-api.polymarket.com/activity";
+const SEARCH_URL_BASE = "https://gamma-api.polymarket.com/public-search";
+const ACTIVITY_URL_BASE = "https://data-api.polymarket.com/activity";
+
+const getSearchUrl = () => {
+  if (typeof window !== 'undefined') {
+    return '/polymarket-api/public-search';
+  }
+  return SEARCH_URL_BASE;
+};
+
+const getActivityUrl = () => {
+  if (typeof window !== 'undefined') {
+    return '/polymarket-data/activity';
+  }
+  return ACTIVITY_URL_BASE;
+};
 
 interface PolymarketMarket {
   id: string;
@@ -35,7 +49,7 @@ interface ActivityItem {
  */
 const searchMarkets = async (query: string): Promise<PolymarketMarket[]> => {
   try {
-    const response = await fetch(`${SEARCH_URL}?q=${encodeURIComponent(query)}`);
+    const response = await fetch(`${getSearchUrl()}?q=${encodeURIComponent(query)}`);
     if (!response.ok) throw new Error('Network response was not ok');
     const data = await response.json();
 
@@ -78,7 +92,7 @@ const fetchActivity = async (wallet: string, conditionId?: string): Promise<Acti
       params.append('market', conditionId);
     }
 
-    const response = await fetch(`${ACTIVITY_URL}?${params.toString()}`);
+    const response = await fetch(`${getActivityUrl()}?${params.toString()}`);
     if (!response.ok) throw new Error('Network response was not ok');
     const data = await response.json();
 
@@ -160,7 +174,7 @@ export const fetchUserActiveMarkets = async (wallet: string): Promise<{ markets:
 
     if (idsToFetch.length > 0) {
       try {
-        const response = await fetch(`${SEARCH_URL.replace('/public-search', '/markets')}?condition_id=${idsToFetch.join(',')}`);
+        const response = await fetch(`${getSearchUrl().replace('/public-search', '/markets')}?condition_id=${idsToFetch.join(',')}`);
         if (response.ok) {
           const data = await response.json();
           if (Array.isArray(data)) {

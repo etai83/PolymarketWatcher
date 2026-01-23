@@ -3,7 +3,14 @@
  * Scans Polymarket markets for opportunities where YES + NO prices sum to less than $1.00
  */
 
-const MARKETS_URL = "https://gamma-api.polymarket.com/markets";
+const MARKETS_URL_BASE = "https://gamma-api.polymarket.com/markets";
+
+const getMarketsUrl = () => {
+  if (typeof window !== 'undefined') {
+    return '/polymarket-api/markets';
+  }
+  return MARKETS_URL_BASE;
+};
 
 export interface ArbitrageOpportunity {
     question: string;
@@ -78,7 +85,7 @@ export const scanForArbitrageOpportunities = async (
             limit: '200',
         });
 
-        const response = await fetch(`${MARKETS_URL}?${params.toString()}`);
+        const response = await fetch(`${getMarketsUrl()}?${params.toString()}`);
         if (!response.ok) {
             throw new Error('Failed to fetch markets');
         }
@@ -139,7 +146,7 @@ export const getAllMarketsWithPrices = async (): Promise<ArbitrageOpportunity[]>
             limit: '100',
         });
 
-        const response = await fetch(`${MARKETS_URL}?${params.toString()}`);
+        const response = await fetch(`${getMarketsUrl()}?${params.toString()}`);
         if (!response.ok) {
             throw new Error('Failed to fetch markets');
         }
